@@ -740,6 +740,31 @@ function fmt(n){return'R$ '+Number(n).toFixed(2).replace('.',',')}
 function calcTotal(n){return(mesas[n]?.pedidos||[]).reduce((s,p)=>s+p.preco*p.qtd,0)}
 function totalItens(n){return(mesas[n]?.pedidos||[]).reduce((s,p)=>s+p.qtd,0)}
 
+// ═══════════════════════════════════════
+// SALVAMENTO LOCAL DOS DADOS
+// ═══════════════════════════════════════
+const STORAGE_KEY = 'rancho_menininho_dados_v1';
+
+function salvarDados(){
+  const dados = { mesas, historico, CARDAPIO, nextId };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(dados));
+}
+
+function carregarDados(){
+  const salvo = localStorage.getItem(STORAGE_KEY);
+  if(!salvo) return;
+
+  try{
+    const dados = JSON.parse(salvo);
+    if(dados.mesas) mesas = dados.mesas;
+    if(Array.isArray(dados.historico)) historico = dados.historico;
+    if(Array.isArray(dados.CARDAPIO)) CARDAPIO = dados.CARDAPIO;
+    if(dados.nextId) nextId = dados.nextId;
+  }catch(e){
+    console.error('Erro ao carregar dados salvos:', e);
+  }
+}
+
 function toast(msg,t='i'){
   const icons={s:'✓',e:'✕',i:'•'};
   const el=document.createElement('div');
@@ -983,6 +1008,7 @@ function confirmarAbrirComanda(){
   const obs=$('abrir-obs').value.trim();
   const now=new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
   mesas[mesaAtual]={...mesas[mesaAtual],status:'aberta',abertura:now,cliente,obs,pedidos:[]};
+  salvarDados();
   toast(`Mesa ${mesaAtual} aberta!`,'s');
   navStack=['s-dashboard','s-mesas'];
   navigate('s-comanda');
@@ -1042,10 +1068,10 @@ function renderComanda(){
       const qm=e.target.closest('[data-action="minus"]');
       const qp=e.target.closest('[data-action="plus"]');
       const rm=e.target.closest('[data-action="rm"]');
-      if(st){const i=+st.dataset.idx;const p=mesas[mesaAtual].pedidos[i];p.status=sCycle[(sCycle.indexOf(p.status)+1)%sCycle.length];renderComanda();}
-      if(qm){const i=+qm.dataset.idx;mesas[mesaAtual].pedidos[i].qtd=Math.max(1,mesas[mesaAtual].pedidos[i].qtd-1);renderComanda();}
-      if(qp){const i=+qp.dataset.idx;mesas[mesaAtual].pedidos[i].qtd++;renderComanda();}
-      if(rm){const i=+rm.dataset.idx;mesas[mesaAtual].pedidos.splice(i,1);renderComanda();toast('Item removido','i');}
+      if(st){const i=+st.dataset.idx;const p=mesas[mesaAtual].pedidos[i];p.status=sCycle[(sCycle.indexOf(p.status)+1)%sCycle.length];salvarDados();renderComanda();}
+      if(qm){const i=+qm.dataset.idx;mesas[mesaAtual].pedidos[i].qtd=Math.max(1,mesas[mesaAtual].pedidos[i].qtd-1);salvarDados();renderComanda();}
+      if(qp){const i=+qp.dataset.idx;mesas[mesaAtual].pedidos[i].qtd++;salvarDados();renderComanda();}
+      if(rm){const i=+rm.dataset.idx;mesas[mesaAtual].pedidos.splice(i,1);salvarDados();renderComanda();toast('Item removido','i');}
     },{once:true}); // once:true pois re-renderiza sempre
   }
   const cc=$('cart-count');
@@ -1096,6 +1122,7 @@ function showCancelarSheet(){
   $('sh-cancel').addEventListener('click',closeSheet);
   $('sh-confirm').addEventListener('click',()=>{
     mesas[mesaAtual]={numero:mesaAtual,status:'fechada',pedidos:[],abertura:null,cliente:'',obs:''};
+    salvarDados();
     closeSheet();
     toast(`Comanda da Mesa ${mesaAtual} cancelada`,'e');
     navStack=['s-dashboard','s-mesas'];
@@ -1163,6 +1190,7 @@ function confirmarAddItem(){
   const m=mesas[mesaAtual];
   const ex=m.pedidos.find(p=>p.itemId===itemAtual.id&&p.obs===obs);
   if(ex){ex.qtd+=addQtd;}else{m.pedidos.push({itemId:itemAtual.id,nome:itemAtual.nome,preco:itemAtual.preco,qtd:addQtd,obs,status:'pendente'});}
+  salvarDados();
   toast(`${addQtd}× ${itemAtual.nome} adicionado`,'s');
   back();
 }
@@ -1189,6 +1217,7 @@ function confirmarFecharComanda(){
   const reg={mesa:mesaAtual,cliente:m.cliente,data:now.toLocaleDateString('pt-BR')+' '+now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),pagamento:pagSel,total,itens:totalItens(mesaAtual),pedidos:JSON.parse(JSON.stringify(m.pedidos))};
   historico.push(reg);
   mesas[mesaAtual]={numero:mesaAtual,status:'fechada',pedidos:[],abertura:null,cliente:'',obs:''};
+  salvarDados();
   toast(`Mesa ${mesaAtual} fechada · ${fmt(total)} via ${pagSel}`,'s');
   imprimirRecibo(reg);
   navStack=['s-dashboard','s-mesas'];
@@ -1309,6 +1338,7 @@ function salvarItem(){
     CARDAPIO.push({id:nextId++,nome,preco,categoria:cat});
     toast(`"${nome}" adicionado!`,'s');
   }
+  salvarDados();
   back();
 }
 
@@ -1323,7 +1353,7 @@ function confirmarDelItem(id){
       <button class="bs-btn danger" id="sh-confirm">Excluir</button>
     </div>`);
   $('sh-cancel').addEventListener('click',closeSheet);
-  $('sh-confirm').addEventListener('click',()=>{CARDAPIO=CARDAPIO.filter(i=>i.id!==id);closeSheet();renderMgmtCardapio();toast('Item excluído','e');});
+  $('sh-confirm').addEventListener('click',()=>{CARDAPIO=CARDAPIO.filter(i=>i.id!==id);salvarDados();closeSheet();renderMgmtCardapio();toast('Item excluído','e');});
 }
 
 // ═══════════════════════════════════════
@@ -1364,6 +1394,7 @@ function closeSheet(){$('sheet-ov')?.remove();}
 // ═══════════════════════════════════════
 // INIT
 // ═══════════════════════════════════════
+carregarDados();
 bindEvents();
 renderDashboard();
 showScreen('s-dashboard');
@@ -1408,6 +1439,11 @@ const lista = document.getElementById("listaPedidos");
 onValue(ref(db, "pedidos"), (snapshot) => {
   const dados = snapshot.val();
   lista.innerHTML = "";
+
+  if (!dados) {
+    lista.innerHTML = "<p>Nenhum pedido salvo ainda.</p>";
+    return;
+  }
 
   for (let id in dados) {
     const p = dados[id];
